@@ -2,7 +2,7 @@
 
 A browser demo: a plush toy moose, modelled and animated in Blender, walks on two feet across a hilly meadow full of pine trees, flowers and giant pints of beer. It uses three.js r187 with `WebGPURenderer`, which falls back to WebGL 2 by itself.
 
-**Where it's going:** a small, simple adventure game. The moose explores the meadow, talks to a few characters, picks things up and completes short quests. Read [Growing into a game](#growing-into-a-game-keep-it-simple) before you add features.
+**Where it's going:** a small, simple adventure game. The story, characters, goals and mechanics are **not decided yet**. They come from the user. Don't invent them; ask. Read [Growing into a game](#growing-into-a-game-keep-it-simple) before you add features.
 
 ## Quick start
 
@@ -146,59 +146,42 @@ The aim is a small game that one person, or one AI session, can understand by re
 ### Source structure
 
 - **Plain JavaScript modules, no framework.** Don't add TypeScript, React, an ECS library, a physics engine or a state-management library unless the user asks. three.js and Vite are the only dependencies. Every new dependency needs a reason you can state in one sentence.
-- **One file per system, named for what it does.** As `main.js` grows, split it like this and stop there:
-
-  ```
-  src/
-    main.js        # boot: renderer, scene, load assets, start loop (keep < ~150 lines)
-    world/         # terrain.js (exists), scatter.js, sky/lights
-    player.js      # moose movement, animation blending, input → intent
-    camera.js      # follow camera
-    game/
-      state.js     # the one game-state object + save/load (localStorage)
-      quests.js    # quest data + tiny step checker
-      npcs.js      # NPC placement + talk triggers
-      items.js     # pickups, inventory
-      dialogue.js  # dialogue UI (HTML overlay, not 3D text)
-    ui/hud.js      # DOM overlay: prompts, inventory, quest log
-  ```
-
-  Don't create a folder or file until there is code to put in it.
-- **One game-state object.** Keep all progress in one serialisable object in `game/state.js`, for example `{ inventory: [], flags: {}, quest: {id, step} }`. Systems read and write it directly. There are no event buses or observers unless two systems genuinely need decoupling. Saving the game is `JSON.stringify(state)`.
-- **Content is data, logic is small.** Quests, dialogue lines, item definitions and NPC spawn points are plain JS arrays and objects (`const QUESTS = [...]`). A quest step is `{ say, need: 'flag' | 'item', id }` or similar. Adding content should mean editing data, not writing new functions.
+- **Don't invent game content.** Build only the mechanics and content the user has asked for. Don't add placeholder story, characters or systems "for later".
+- **One file per system, named for what it does.** As `main.js` grows, split out systems such as the player, the camera, the world and the UI into their own modules, plus a `game/` folder for game logic. Don't create a folder or file until there is code to put in it. Record the real layout in the table above.
+- **Keep `main.js` as the boot file.** It sets up the renderer, scene and assets and starts the loop. Aim for under about 150 lines.
+- **One game-state object.** Keep all progress in one serialisable object. Systems read and write it directly. There are no event buses or observers unless two systems genuinely need decoupling. Saving the game is `JSON.stringify(state)`.
+- **Content is data, logic is small.** Whatever the game's content turns out to be, describe it as plain JS arrays and objects. Adding content should mean editing data, not writing new functions.
 - **One update loop.** `renderer.setAnimationLoop` calls `update(dt)` on each system in a fixed, visible order inside `main.js`. Don't give systems their own `requestAnimationFrame` or timers.
-- **Interaction stays distance-based.** "Near an NPC or item and pressing E" (or tapping a button) is enough. Use `heightAt` and plain distance checks; don't add a physics engine. If you need simple collisions, use circles on the XZ plane, pushed apart in `player.js`.
+- **No physics engine.** Use `heightAt` and plain distance checks. If you need simple collisions, use circles on the XZ plane.
 - **UI is HTML/CSS over the canvas** (like the instructions box), not 3D text. It's easier to style, it's accessible, and it works on mobile.
 - **Delete instead of commenting out.** Remove dead code, debug helpers and unused assets in the same change that makes them unused.
-- **Keep the feature list short.** Finish and polish one loop (walk, talk, fetch, reward) before adding mechanics like combat, crafting or a day/night cycle.
+- **Keep the feature list short.** Finish and polish one requested feature before starting the next.
 
 ### 3D models and assets
 
 - **One Blender script per asset, and the script is the source.** `blender/build_<thing>.py` produces `public/<thing>.glb`. Never hand-edit a `.blend` or `.glb` and commit it as the source. If a change can't be scripted, say so to the user instead of hand-editing silently.
 - **Share helpers, don't copy them.** When a second character script appears, move the generic bits (`ellipsoid`, `mat`, `srgb`, `set_rot`, `set_loc`, `make_action`, the export call) into `blender/lib.py`. Import it with `sys.path.insert(0, os.path.dirname(__file__))`. Each asset script then only holds its shapes, bones and pose functions.
 - **Build from primitives in the same plush style.** Rounded ellipsoids, sheen fabric materials and a few flat colours. Keep characters roughly between 5k and 25k triangles. Don't import downloaded models or photo textures. Fur detail comes from the shared procedural normal map in the web app.
-- **Simple props belong in JS, not Blender.** Rigid, non-animated props like trees, pints, rocks, signs and pickups can be `three` primitives or lathes in `world/scatter.js`, using `InstancedMesh` when there are many of them. Use Blender only for anything skinned or animated, or too organic for primitives.
+- **Simple props belong in JS, not Blender.** Rigid, non-animated props like the trees and pints can be `three` primitives or lathes in `world/scatter.js`, using `InstancedMesh` when there are many of them. Use Blender only for anything skinned or animated, or too organic for primitives.
 - **Names are a contract.** Bone names, material names and clip names are read by the JS. Keep them short and consistent:
   - Bones: `root`, `hips`, `spine`, `head`, then `<part>.L` / `<part>.R`.
   - Materials: by look (`Fur`, `Dark`, ...), not by part.
-  - Clips: PascalCase verbs (`Idle`, `Walk`, `Talk`, `PickUp`, `Wave`).
+  - Clips: PascalCase verbs (`Idle`, `Walk`).
   If you rename one, update the JS in the same commit.
 - **Few bones, few clips.** Add a bone only when an animation needs it. Every clip loops cleanly or is clearly one-shot, and every clip is in place (no root motion); the game moves the character. Write down each new clip's speed assumption (as `WALK_SPEED` does) next to the code that uses it.
-- **One GLB per character, all its clips inside.** Load each GLB once and clone with `SkeletonUtils.clone` for repeated NPCs. Don't split animations into separate files.
+- **One GLB per character, all its clips inside.** Load each GLB once and clone with `SkeletonUtils.clone` when the same character appears more than once. Don't split animations into separate files.
 - **Always look at it.** After any model change, render `--render` stills (front and side, plus a `--pose` frame for new clips), view them, and only then export.
 
 ### Checklist before you finish a change
 
 1. `npm run build` passes.
-2. The page loads with no console errors, and the core loop (walk, interact) still works.
+2. The page loads with no console errors, and walking plus every existing feature still works.
 3. No new dependency, folder or abstraction that the change doesn't need.
 4. This README is updated if the structure, a name contract or a command changed.
 
 ## Ideas / open work
 
-- First adventure loop: an NPC (for example a plush squirrel) asks the moose to fetch something, there's a pickup to find, then a reward.
-- Press E or tap to interact, with an HTML prompt that appears when the moose is near something.
-- Save and load progress in `localStorage`.
+- The game design isn't decided yet. Ask the user before building game features.
 - The moose has no collision with trees or pints.
 - WASD steering hasn't been checked in the browser yet.
 - Plush fur via shell or fin rendering in TSL, instead of only sheen plus a normal map.
